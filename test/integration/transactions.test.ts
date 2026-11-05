@@ -104,5 +104,159 @@ integration('transactional commerce flow', () => {
         variantKey: 'SKU-1',
       }),
     ).toBe(3);
+
+    const refund = await secondStore.payments.refund({
+      paymentId: payment!.id,
+      amount: 40,
+      idempotencyKey: 'refund-1',
+      reason: 'price adjustment',
+    });
+    const refundReplay = await secondStore.payments.refund({
+      paymentId: payment!.id,
+      amount: 40,
+      idempotencyKey: 'refund-1',
+      reason: 'price adjustment',
+    });
+    expect(refund?.id).toBe(refundReplay?.id);
+
+    const webhook = await secondStore.payments.recordWebhook({
+      provider: 'test',
+      eventId: 'event-1',
+      payload: { status: 'captured' },
+    });
+    const webhookReplay = await secondStore.payments.recordWebhook({
+      provider: 'test',
+      eventId: 'event-1',
+      payload: { status: 'captured' },
+    });
+    expect(webhook.created).toBe(true);
+    expect(webhookReplay.created).toBe(false);
+
+    const shipment = await secondStore.fulfillment.createShipment({
+      orderId: order!.id,
+      warehouseId: warehouse.id,
+      lines: [{ variantKey: 'SKU-1', quantity: 2 }],
+    });
+    await secondStore.fulfillment.transition(shipment!.id, 'packed');
+    await secondStore.fulfillment.transition(shipment!.id, 'shipped');
+    await secondStore.fulfillment.transition(shipment!.id, 'delivered');
+
+    const returned = await secondStore.returns.create({
+      orderId: order!.id,
+      reason: 'damaged by customer',
+      lines: [{ variantKey: 'SKU-1', quantity: 1 }],
+    });
+    await secondStore.returns.transition(returned!.id, 'approved');
+    await secondStore.returns.transition(returned!.id, 'received', {
+      disposition: 'damaged',
+    });
+    expect(await firstStore.inventory.get(warehouse.id, 'SKU-1')).toMatchObject(
+      { onHand: 9, reserved: 0, damaged: 1 },
+    );
+
+    const overflow = await businessScope.warehouses.create({
+      code: 'OVERFLOW',
+      name: 'Overflow',
+      vendorIds: [first.id, second.id],
+    });
+    await firstStore.inventory.transfer({
+      fromWarehouseId: warehouse.id,
+      toWarehouseId: overflow.id,
+      variantKey: 'SKU-1',
+      quantity: 2,
+      reference: 'transfer-1',
+    });
+    await firstStore.inventory.reconcile({
+      warehouseId: overflow.id,
+      variantKey: 'SKU-1',
+      countedOnHand: 3,
+      reason: 'cycle count',
+    });
+    expect(await firstStore.inventory.get(overflow.id, 'SKU-1')).toMatchObject({
+      onHand: 3,
+      reserved: 0,
+      damaged: 0,
+    });
+
+    await secondStore.promotions.upsert({
+      code: 'SAVE20',
+      type: 'fixed',
+      value: 20,
+    });
+    const promoted = await secondStore.orders.checkout({
+      ...checkout,
+      idempotencyKey: 'checkout-promotion',
+      lines: [{ variantKey: 'SKU-1', quantity: 1 }],
+      promotionCode: 'SAVE20',
+    });
+    expect(promoted?.grandTotal).toBe(100);
+    await secondStore.orders.transition(promoted!.id, 'cancelled');
+    expect(
+      (await commerce.models.Promotion.findOne({ code: 'SAVE20' }))?.usageCount,
+    ).toBe(0);
+
+    const expiringCommerce = createCommerceMongoose({
+      connection,
+      reservationTtlMs: 1,
+    });
+    const expiringStore = expiringCommerce.forVendor({
+      businessId: business.id,
+      vendorId: second.id,
+    });
+    const expiring = await expiringStore.orders.checkout({
+      ...checkout,
+      idempotencyKey: 'checkout-expiring',
+      lines: [{ variantKey: 'SKU-1', quantity: 1 }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await expiringStore.orders.expireReservations()).toContain(
+      expiring!.id,
+    );
+    expect(
+      await commerce.models.OutboxEvent.countDocuments({
+        businessId: business._id,
+      }),
+    ).toBeGreaterThan(0);
+
+    const claims = await Promise.all([
+      commerce.outbox.claimNext('worker-a'),
+      commerce.outbox.claimNext('worker-b'),
+    ]);
+    expect(claims[0]).not.toBeNull();
+    expect(claims[1]).not.toBeNull();
+    expect(claims[0]!.id).not.toBe(claims[1]!.id);
+    await commerce.outbox.markProcessed(claims[0]!.id);
+    await commerce.outbox.markFailed(claims[1]!.id, 'retry test', 1);
+
+    await firstStore.catalog.upsertListing({
+      variantKey: 'RACE-SKU',
+      title: 'Race product',
+      price: 10,
+    });
+    await firstStore.inventory.adjust({
+      warehouseId: warehouse.id,
+      variantKey: 'RACE-SKU',
+      quantity: 10,
+      reason: 'race test stock',
+    });
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 20 }, (_, index) =>
+        firstStore.orders.checkout({
+          ...checkout,
+          idempotencyKey: `race-${index}`,
+          lines: [{ variantKey: 'RACE-SKU', quantity: 1 }],
+        }),
+      ),
+    );
+    expect(
+      attempts.filter((attempt) => attempt.status === 'fulfilled'),
+    ).toHaveLength(10);
+    expect(
+      await firstStore.inventory.get(warehouse.id, 'RACE-SKU'),
+    ).toMatchObject({
+      onHand: 10,
+      reserved: 10,
+      damaged: 0,
+    });
   });
 });

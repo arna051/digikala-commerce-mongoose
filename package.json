@@ -11,6 +11,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./nestjs": {
+      "types": "./dist/nestjs/index.d.ts",
+      "import": "./dist/nestjs/index.js",
+      "require": "./dist/nestjs/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.cjs"
     }
   },
   "files": [
@@ -21,6 +31,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "check:package": "node scripts/check-package.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test tsup.config.ts vitest.config.ts",
     "format": "prettier --write .",
@@ -28,7 +40,7 @@
     "check": "npm run typecheck && npm run lint && npm run format:check",
     "test": "vitest run",
     "test:integration": "vitest run test/integration",
-    "verify": "npm run check && npm test && npm run build",
+    "verify": "npm run check && npm test && npm run build && npm run check:package && npm run check:secrets",
     "prepublishOnly": "npm run verify"
   },
   "keywords": [
@@ -49,9 +61,16 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
+    "@nestjs/common": ">=10 <13",
     "mongoose": ">=8 <10"
   },
+  "peerDependenciesMeta": {
+    "@nestjs/common": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@nestjs/common": "^11.1.9",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.0",
     "eslint": "^9.39.1",

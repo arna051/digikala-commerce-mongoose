@@ -31,13 +31,15 @@ websites can offer different prices while atomically consuming one quantity.
 - Shared or vendor-dedicated warehouses
 - Vendor-specific product listings and prices
 - Atomic stock adjustments, reservations, sales, releases and returns
+- Reservation expiry, warehouse transfers, cycle counts and damaged stock
 - Customers, addresses and carts
 - Idempotent checkout with immutable title/price snapshots
 - Orders and guarded state transitions
-- Payment attempts and capture
-- Shipments and returns
+- Payment attempts, capture, idempotent webhooks and partial/full refunds
+- Multiple shipments, partial fulfillment and inspected return dispositions
 - Optional external channel mappings
 - Append-only stock movements and audit events
+- Transactional outbox events for reliable worker integrations
 
 The package uses integer Iranian rial (`IRR`) amounts. It never accepts a
 browser-supplied checkout price: checkout resolves the current vendor listing
@@ -52,6 +54,19 @@ npm install digikala-commerce-mongoose mongoose
 Commerce mutations require MongoDB transactions. Production deployments must
 use a replica set; a single-node replica set is appropriate for a small store.
 
+For local development, the included Docker setup starts one:
+
+```bash
+docker compose up -d --wait mongo
+docker compose run --rm mongo-init
+```
+
+Connect with:
+
+```text
+mongodb://127.0.0.1:27019/?directConnection=true&replicaSet=commerce-rs
+```
+
 ## Setup
 
 ```ts
@@ -64,7 +79,7 @@ const commerce = createCommerceMongoose({
   connection: mongoose.connection,
 });
 
-await commerce.ensureIndexes();
+await commerce.ensureReady();
 
 const business = await commerce.businesses.create({
   key: 'hippogriff-retail',
@@ -141,6 +156,53 @@ const order = await store.orders.checkout({
 
 Checkout, inventory reservations, the order, idempotency record, stock
 movements, and audit event commit together or roll back together.
+
+Abandoned checkout stock is released by a worker:
+
+```ts
+await store.orders.expireReservations(100);
+```
+
+## NestJS
+
+```ts
+import { Module } from '@nestjs/common';
+import { DigikalaCommerceModule } from 'digikala-commerce-mongoose/nestjs';
+
+@Module({
+  imports: [
+    DigikalaCommerceModule.forRoot({ connection: mongoose.connection }),
+  ],
+})
+export class AppModule {}
+```
+
+Inject `COMMERCE_MONGOOSE` to access the initialized facade. NestJS is an
+optional peer dependency; plain Node.js users do not install it.
+
+## Workers and outbox
+
+Every audited business event is written to the outbox in the same transaction.
+A worker atomically claims one event with a renewable lease, performs external
+work, then marks it processed:
+
+```ts
+while (true) {
+  const event = await commerce.outbox.claimNext('worker-1', 30_000);
+  if (!event) break;
+
+  try {
+    await publish(event.topic, event.payload);
+    await commerce.outbox.markProcessed(event.id);
+  } catch (error) {
+    await commerce.outbox.markFailed(event.id, String(error));
+  }
+}
+```
+
+Outbox delivery is at least once. External consumers must therefore use the
+event ID as an idempotency key. A crashed worker's lease expires so another
+worker can retry the event.
 
 ## Relationship with the other packages
 

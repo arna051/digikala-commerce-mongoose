@@ -1,0 +1,31 @@
+services:
+  mongo:
+    image: mongo:8.0.16
+    command: ['mongod', '--replSet', 'commerce-rs', '--bind_ip_all']
+    ports:
+      - '27019:27017'
+    volumes:
+      - commerce-mongo-data:/data/db
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test:
+        ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mongo-init:
+    image: mongo:8.0.16
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: 'no'
+    volumes:
+      - ./docker/mongo/init-replica.sh:/init-replica.sh:ro
+    entrypoint: ['bash', '/init-replica.sh']
+
+volumes:
+  commerce-mongo-data:

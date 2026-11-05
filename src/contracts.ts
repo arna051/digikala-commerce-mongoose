@@ -7,6 +7,13 @@ const objectId = z
 const quantity = z.number().int().positive();
 const money = z.number().int().nonnegative();
 
+export const PaginationInputSchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).default(25),
+    cursor: objectId.optional(),
+  })
+  .strict();
+
 export const CurrencySchema = z.enum(['IRR']);
 export const MoneySchema = z
   .object({ amount: money, currency: CurrencySchema.default('IRR') })
@@ -60,6 +67,39 @@ export const StockReservationSchema = z
     variantKey: key,
     quantity,
     orderId: objectId,
+    reference: key.optional(),
+  })
+  .strict();
+
+export const StockTransferSchema = z
+  .object({
+    fromWarehouseId: objectId,
+    toWarehouseId: objectId,
+    variantKey: key,
+    quantity,
+    reference: key.optional(),
+  })
+  .strict()
+  .refine((value) => value.fromWarehouseId !== value.toWarehouseId, {
+    message: 'Transfer warehouses must be different',
+  });
+
+export const StockReconciliationSchema = z
+  .object({
+    warehouseId: objectId,
+    variantKey: key,
+    countedOnHand: z.number().int().nonnegative(),
+    reason: key,
+    reference: key.optional(),
+  })
+  .strict();
+
+export const DamageStockSchema = z
+  .object({
+    warehouseId: objectId,
+    variantKey: key,
+    quantity,
+    reason: key,
     reference: key.optional(),
   })
   .strict();
@@ -193,6 +233,7 @@ export const CheckoutInputSchema = z
       }),
     shippingAddress: AddressSchema,
     notes: z.string().max(2000).optional(),
+    promotionCode: key.optional(),
     source: z.string().trim().min(1).default('website'),
   })
   .strict();
@@ -205,6 +246,24 @@ export const PaymentAttemptInputSchema = z
     idempotencyKey: key,
     providerReference: key.optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+export const RefundInputSchema = z
+  .object({
+    paymentId: objectId,
+    amount: z.number().int().positive(),
+    idempotencyKey: key,
+    providerReference: key.optional(),
+    reason: key,
+  })
+  .strict();
+
+export const PaymentWebhookInputSchema = z
+  .object({
+    provider: key,
+    eventId: key,
+    payload: z.unknown(),
   })
   .strict();
 
@@ -238,20 +297,45 @@ export const ChannelMappingInputSchema = z
   })
   .strict();
 
+export const PromotionInputSchema = z
+  .object({
+    code: key,
+    type: z.enum(['fixed', 'percentage']),
+    value: z.number().int().positive(),
+    minimumSubtotal: money.default(0),
+    maximumDiscount: money.optional(),
+    startsAt: z.coerce.date().optional(),
+    endsAt: z.coerce.date().optional(),
+    usageLimit: z.number().int().positive().optional(),
+    active: z.boolean().default(true),
+  })
+  .strict()
+  .refine((value) => value.type !== 'percentage' || value.value <= 100, {
+    path: ['value'],
+    message: 'Percentage promotions cannot exceed 100',
+  });
+
 export type WarehouseInput = z.input<typeof WarehouseInputSchema>;
+export type PaginationInput = z.input<typeof PaginationInputSchema>;
 export type BusinessInput = z.input<typeof BusinessInputSchema>;
 export type VendorInput = z.input<typeof VendorInputSchema>;
 export type StockAdjustment = z.input<typeof StockAdjustmentSchema>;
 export type StockReservation = z.input<typeof StockReservationSchema>;
+export type StockTransfer = z.input<typeof StockTransferSchema>;
+export type StockReconciliation = z.input<typeof StockReconciliationSchema>;
+export type DamageStock = z.input<typeof DamageStockSchema>;
 export type CustomerInput = z.input<typeof CustomerInputSchema>;
 export type CartIdentity = z.input<typeof CartIdentitySchema>;
 export type CartLineMutation = z.input<typeof CartLineMutationSchema>;
 export type CheckoutInput = z.input<typeof CheckoutInputSchema>;
 export type VendorListingInput = z.input<typeof VendorListingInputSchema>;
 export type PaymentAttemptInput = z.input<typeof PaymentAttemptInputSchema>;
+export type RefundInput = z.input<typeof RefundInputSchema>;
+export type PaymentWebhookInput = z.input<typeof PaymentWebhookInputSchema>;
 export type ShipmentInput = z.input<typeof ShipmentInputSchema>;
 export type ReturnInput = z.input<typeof ReturnInputSchema>;
 export type ChannelMappingInput = z.input<typeof ChannelMappingInputSchema>;
+export type PromotionInput = z.input<typeof PromotionInputSchema>;
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type ShipmentStatus = z.infer<typeof ShipmentStatusSchema>;

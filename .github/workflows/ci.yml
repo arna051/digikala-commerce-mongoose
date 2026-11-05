@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: docker compose up -d --wait mongo
+      - run: docker compose run --rm mongo-init
+      - run: npm run verify
+      - run: npm run test:integration
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27019/?directConnection=true&replicaSet=commerce-rs
+          MONGODB_REPLICA_URI: mongodb://127.0.0.1:27019/?directConnection=true&replicaSet=commerce-rs
+      - run: npm audit --omit=dev --audit-level=high
