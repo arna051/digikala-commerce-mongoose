@@ -1,0 +1,73 @@
+{
+  "name": "digikala-commerce-mongoose",
+  "version": "0.1.0",
+  "description": "Transaction-safe Mongoose commerce domain for small standalone stores.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test tsup.config.ts vitest.config.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "test": "vitest run",
+    "test:integration": "vitest run test/integration",
+    "verify": "npm run check && npm test && npm run build",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "ecommerce",
+    "mongoose",
+    "mongodb",
+    "inventory",
+    "orders",
+    "nestjs"
+  ],
+  "author": "Hippogriff Studio <https://hippogriff.ir>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arna051/digikala-commerce-mongoose.git"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "mongoose": ">=8 <10"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "mongoose": "^9.1.0",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3",
+    "vitest": "^4.0.8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
