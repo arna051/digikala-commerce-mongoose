@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-11-05
 
 - Added business-scoped multi-vendor storefronts with shared warehouses.
 - Added transaction-safe stock, reservations, expiry, reconciliation,
